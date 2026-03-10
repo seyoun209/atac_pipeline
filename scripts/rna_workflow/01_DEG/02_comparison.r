@@ -1,9 +1,32 @@
 library(eulerr)
 library(ggVennDiagram)
+library(ggplot2)
+library(DESeq2)
+library(ggrepel)
+library(dplyr)
+library(EnhancedVolcano)
 
 load(file= file.path(diff_data_dir,"shrink_normoxia_hgnc_tximeta.Rdata")) # res_Shrink_norm_df_hgnc
 load(file= file.path(diff_data_dir,"shrink_hypoxia_hgnc_tximeta.Rdata")) # res_Shrink_hypo_df_hgnc
 load(file= file.path(diff_data_dir,"shrink_interaction_hgnc_tximeta.Rdata")) # res_Shrink_inter_df_hgnc
+
+# ENSG00000111215 this ensg should be PRH4 but annotation did wrong as PRH1. 
+
+# all_res <- list(
+#   res_Shrink_norm_df_hgnc = res_Shrink_norm_df_hgnc,
+#   res_Shrink_hypo_df_hgnc = res_Shrink_hypo_df_hgnc,
+#   res_Shrink_inter_df_hgnc = res_Shrink_inter_df_hgnc)
+
+# for (i in names(all_res)) {
+#   # Locate the row index
+#   target_idx <- which(all_res[[i]]$gene_id == "ENSG00000111215")
+  
+#   if (length(target_idx) > 0) {
+#     all_res[[i]]$SYMBOL[target_idx] <- "PRH4"
+#   }
+# }
+
+# list2env(all_res, envir = .GlobalEnv)
 
 diff_norm <- res_Shrink_norm_df_hgnc |> filter(class != "static")  # 1281
 diff_hyp <- res_Shrink_hypo_df_hgnc |> filter(class != "static") # 593
@@ -97,3 +120,105 @@ non_ensg_only_inter <- onlyInteraction_symbols[!grepl("^ENSG", onlyInteraction_s
 
 # Sort and combine
 sorted_only_inter <- c(sort(non_ensg_only_inter), ensg_only_inter)
+
+
+
+# Volcano plot for the differential normoxia -------------------------------------------
+## Normoxia  (Doxorubicin vs pbs)
+  # EnhancedVolcano(res_Shrink_norm_df_hgnc,
+  #   lab = res_Shrink_norm_df_hgnc$SYMBOL,
+  #   x = 'log2FoldChange',
+  #   y = 'padj')
+
+
+
+make_volcano <- function(df, up_color, down_color, title = NULL) {
+  df <- df |> filter(!is.na(padj)) |> mutate(
+      label_name = ifelse(is.na(SYMBOL), gene_id, SYMBOL),
+      neg_log10_padj = -log10(padj),
+      color_group = case_when(
+        padj < 0.05 & log2FoldChange > 1 ~ "Upregulated",
+        padj < 0.05 & log2FoldChange < -1 ~ "Downregulated",
+        TRUE ~ "NS"
+      )
+    )
+  
+  sig_up <- df |> filter(color_group == "Upregulated") |>  arrange(desc(log2FoldChange)) |> head(20)
+  sig_down <- df |>  filter(color_group == "Downregulated") |>  arrange(log2FoldChange) |> head(20)
+  select_genes <- c(sig_up$label_name, sig_down$label_name)
+  
+  df <- df |>  mutate(label = ifelse(label_name %in% select_genes, label_name, NA))
+  y_axis_p <- df$neg_log10_padj |> max() |> round(digits = -1)
+
+  p <- ggplot(df, aes(x = log2FoldChange, y = neg_log10_padj, color = color_group)) +
+    geom_point(size = 1, alpha = 0.7) +
+    geom_text_repel(aes(label = label),
+      size = 2,fontface = "italic",
+      color = "black",max.overlaps = Inf,na.rm = TRUE) +
+    scale_color_manual(
+      values = c("Upregulated" = up_color, "Downregulated" = down_color, "NS" = "grey70")) +
+    # scale_x_continuous(breaks = seq(-10, 10, 2), expand = c(0, 0)) +
+    scale_x_continuous(limits = c(-10, 10), breaks = seq(-10, 10, 2)) + 
+    scale_y_continuous(limits = c(0, y_axis_p), breaks = seq(0, y_axis_p, length.out = 5)) +
+    # coord_cartesian(xlim = c(-10, 10), ylim = c(0, 14), clip = "off") +
+    labs(x = expression(Log[2]~Fold~Change), y = expression(-Log[10]~adjusted~p-value)) +
+    theme(
+      axis.line.y = element_line(linewidth = 0.25),
+      axis.line.x = element_line(linewidth = 0.25),
+      axis.ticks.x = element_blank(),
+      axis.ticks.y = element_line(color = "black", linewidth = 0.25),
+      axis.ticks.length.y = unit(-0.1, "cm"),
+      axis.title.x = element_text(size = 8, family = "Helvetica", margin = margin(t = 5)),
+      axis.title.y = element_text(size = 8, family = "Helvetica", margin = margin(r = 5)),
+      text = element_text(family = "Helvetica"),
+      axis.text = element_text(color = "black", size = 7),
+      panel.background = element_rect(fill = "transparent", color = NA),
+      plot.background = element_rect(fill = "transparent", color = NA),
+      panel.grid = element_blank(),
+      legend.position = c(0.9, 0.89),
+      legend.title = element_blank(),
+      legend.background = element_rect(fill = "transparent", color = NA),
+      legend.key = element_rect(fill = "transparent", color = NA),
+      legend.text = element_text(size = 8),
+      legend.key.size = unit(0.4, "cm")
+    )
+  
+  return(p)
+}
+
+p_normoxia <- make_volcano(res_Shrink_norm_df_hgnc, 
+                            up_color = "#f2bcd5", 
+                            down_color = "#bebfe3")
+
+p_hypoxia <- make_volcano(res_Shrink_hypo_df_hgnc, 
+                           up_color = "#febfa6", 
+                           down_color = "#8AA3C5")
+
+# For this one change the make_volcano for length.out = 5 instead by =10
+p_interaction <- make_volcano(res_Shrink_inter_df_hgnc, 
+                               up_color = "#f5d7a3", 
+                               down_color = "#b5d0be")
+
+
+save(p_normoxia, p_hypoxia, p_interaction, file = file.path(diff_plot_dir, "volcanoplots.rda"))
+
+pdf(file=file.path(diff_plot_dir, "deseq_volcano_figure.pdf"),width=7.5,height=13.5,bg="transparent")
+
+pageCreate(width = 7.5, height = 13.5, showGuides = FALSE)
+
+plotText("a", x = 0.1, y = 0.1, just = c("left", "top"), fontfamily = "Helvetica",
+         fontsize = 14, fontface = "bold")
+
+load(file.path(diff_plot_dir, "volcanoplots.rda"))
+plotGG(plot=p_normoxia, x=0.35, y=0.5, height=4, width=7)
+
+plotText("b", x = 0.1, y = 4.5, just = c("left", "top"), fontfamily = "Helvetica",
+         fontsize = 14, fontface = "bold")
+plotGG(plot=p_hypoxia, x=0.35, y=4.9, height=4, width=7)
+
+plotText("c", x = 0.1, y = 8.9, just = c("left", "top"), fontfamily = "Helvetica",
+         fontsize = 14, fontface = "bold")
+
+plotGG(plot=p_interaction, x=0.35, y=9.3, height=4, width=7)
+
+dev.off()

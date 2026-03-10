@@ -4,6 +4,7 @@ library(plotgardener)
 library(grid)
 library(RColorBrewer)
 
+
 #colorcode_RNA <- c("down"="#1e87a5", "up"="#e07653")
 
 
@@ -118,3 +119,12 @@ facet_wrap(~category, ncol = 1, strip.position = "left",
 }
 
 
+load(file= file.path("/users/s/e/seyoun/Ref/hg38/gencode/v49", "gencode_v49_gene_annot.Rdata"))
+add_symbol <- function(df, gene_annot_clean) {  
+  df <- df |>
+    left_join(gene_annot_clean, by = "gene_id") |>
+    mutate(SYMBOL = ifelse(is.na(SYMBOL), gene_id, SYMBOL)) |>
+    relocate(gene_id, SYMBOL)
+  
+  return(df)
+}

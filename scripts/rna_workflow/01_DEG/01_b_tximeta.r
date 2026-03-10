@@ -74,7 +74,8 @@ res_Shrink_norm_gr <- lfcShrink(dds_norm_fit, coef='Treatment_DOXO_vs_PBS', type
   plyranges::names_to_column("gene_id")
 
 save(res_Shrink_norm_gr,dds_norm_fit,resRNA_norm, sample_norm, file = file.path(diff_data_dir,"deseq_results_norm_tximeta.Rdata"))
-#load(file = file.path(diff_data_dir,"deseq_results_norm_tximeta.Rdata"))
+
+load(file = file.path(diff_data_dir,"deseq_results_norm_tximeta.Rdata")) # res_Shrink_norm_gr,dds_norm_fit,resRNA_norm, sample_norm
 
 # PCA plot for normoxia
 res_Shrink_norm_gr <- res_Shrink_norm_gr[!is.na(res_Shrink_norm_gr$padj),]
@@ -84,9 +85,9 @@ rlog_dds_norm <- rlog(dds_norm_fit)
 vst_dds_norm <- vst(dds_norm_fit)
 
 save(norm_dds_norm, rlog_dds_norm, vst_dds_norm, file = file.path(diff_data_dir,"deseq_transformed_norm_tximeta.Rdata"))
-load(file = file.path(diff_data_dir,"deseq_transformed_norm_tximeta.Rdata"))
 
-ass
+load(file = file.path(diff_data_dir,"deseq_transformed_norm_tximeta.Rdata")) # norm_dds_norm, rlog_dds_norm, vst_dds_norm
+
 # plotPCA(vst_dds_norm, c("Treatment","Sex"),ntop=18973)
 
 pca_vst_re <- prcomp(t(assay(vst_dds_norm)))
@@ -201,34 +202,40 @@ res_Shrink_norm_df$class <- "static"
 res_Shrink_norm_df$class[res_Shrink_norm_df$gene_id %in% up_norm$gene_id] <- "gained"
 res_Shrink_norm_df$class[res_Shrink_norm_df$gene_id %in% down_norm$gene_id] <- "lost"
 
-# Adding the HGNC symbol
-ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-res_Shrink_norm_df_cleanVer <- res_Shrink_norm_df |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id))
+res_Shrink_norm_df_hgnc <- res_Shrink_norm_df |> add_symbol(gene_annot_clean)
+res_Shrink_norm_df_hgnc |> filter(grepl("ENSG", SYMBOL, ignore.case = TRUE)) |> dim() # 2912 doens't have symbol
 
-annots <- AnnotationDbi::select(org.Hs.eg.db, res_Shrink_norm_df_cleanVer$gene_id,
-                                columns=c("SYMBOL"), keytype="ENSEMBL")
-annots <- dplyr::rename(annots, gene_id = ENSEMBL)
-annots_unique <- annots %>% distinct(gene_id, .keep_all = TRUE)
-res_Shrink_norm_df_hgnc <- left_join(res_Shrink_norm_df_cleanVer, annots_unique, by = "gene_id") # 2865 of them couldn't find the HGNC
+# # Adding the HGNC symbol
+# ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+# res_Shrink_norm_df_cleanVer <- res_Shrink_norm_df |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id))
+
+# annots <- AnnotationDbi::select(org.Hs.eg.db, res_Shrink_norm_df_cleanVer$gene_id,
+#                                 columns=c("SYMBOL"), keytype="ENSEMBL")
+# annots <- dplyr::rename(annots, gene_id = ENSEMBL)
+# annots_unique <- annots %>% distinct(gene_id, .keep_all = TRUE)
+# res_Shrink_norm_df_hgnc <- left_join(res_Shrink_norm_df_cleanVer, annots_unique, by = "gene_id") # 2865 of them couldn't find the HGNC
 save(res_Shrink_norm_df_hgnc, file= file.path(diff_data_dir,"shrink_normoxia_hgnc_tximeta.Rdata"))
 write.table(res_Shrink_norm_df_hgnc, file= file.path(diff_data_dir,"deseq_normoxia_results_tximeta.tsv"),
             sep="\t",quote=F,col.names=TRUE, row.names = FALSE)
 
 #  Save to run GO and pathway analysis
 # up genes
-res_Shrink_norm_df_hgnc |> filter(class == "gained") |> dplyr::select(gene_id) |> 
+res_Shrink_norm_df_hgnc |> filter(class == "gained") |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id)) |>
+    dplyr::select(gene_id) |> 
     distinct() |> 
     write.table(file.path(diff_data_dir,"diff_normoxia_upregulated_padj05log2fc1_genes.txt"),
     sep="\t",quote=F,col.names=FALSE, row.names = FALSE)
 
 # down genes
-res_Shrink_norm_df_hgnc |> filter(class == "lost") |> dplyr::select(gene_id) |> 
+res_Shrink_norm_df_hgnc |> filter(class == "lost")  |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id)) |>
+    dplyr::select(gene_id) |> 
     distinct() |> 
     write.table(file.path(diff_data_dir,"diff_normoxia_downregulated_padj05log2fc1_genes.txt"),
     sep="\t",quote=F,col.names=FALSE, row.names = FALSE)
 
 #background genes
-res_Shrink_norm_df_hgnc  |> dplyr::select(gene_id) |> 
+res_Shrink_norm_df_hgnc  |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id)) |>
+    dplyr::select(gene_id) |> 
     distinct() |> 
     write.table(file.path(diff_data_dir,"diff_normoxia_background_padj05log2fc1_genes.txt"),
     sep="\t",quote=F,col.names=FALSE, row.names = FALSE)
@@ -274,14 +281,19 @@ res_Shrink_hypo_df$class <- "static"
 res_Shrink_hypo_df$class[res_Shrink_hypo_df$gene_id %in% up_hypo$gene_id] <- "gained"
 res_Shrink_hypo_df$class[res_Shrink_hypo_df$gene_id %in% down_hypo$gene_id] <- "lost"
 
+
+res_Shrink_hypo_df_hgnc <- res_Shrink_hypo_df |> add_symbol(gene_annot_clean)
+res_Shrink_hypo_df_hgnc |> filter(grepl("ENSG", SYMBOL, ignore.case = TRUE)) |> dim() # 3078 doens't have symbol
+
+
 # Adding the HGNC symbol
-ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-res_Shrink_hypo_df_cleanVer <- res_Shrink_hypo_df |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id))
-annots <- AnnotationDbi::select(org.Hs.eg.db, res_Shrink_hypo_df_cleanVer$gene_id,
-                                columns=c("SYMBOL"), keytype="ENSEMBL")
-annots <- dplyr::rename(annots, gene_id = ENSEMBL)
-annots_unique <- annots %>% distinct(gene_id, .keep_all = TRUE)
-res_Shrink_hypo_df_hgnc <- left_join(res_Shrink_hypo_df_cleanVer, annots_unique, by = "gene_id") # 3027 of them couldn't find the HGNC
+# ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+# res_Shrink_hypo_df_cleanVer <- res_Shrink_hypo_df |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id))
+# annots <- AnnotationDbi::select(org.Hs.eg.db, res_Shrink_hypo_df_cleanVer$gene_id,
+#                                 columns=c("SYMBOL"), keytype="ENSEMBL")
+# annots <- dplyr::rename(annots, gene_id = ENSEMBL)
+# annots_unique <- annots %>% distinct(gene_id, .keep_all = TRUE)
+# res_Shrink_hypo_df_hgnc <- left_join(res_Shrink_hypo_df_cleanVer, annots_unique, by = "gene_id") # 3027 of them couldn't find the HGNC
 save(res_Shrink_hypo_df_hgnc, file= file.path(diff_data_dir,"shrink_hypoxia_hgnc_tximeta.Rdata"))
 
 write.table(res_Shrink_hypo_df_hgnc, file= file.path(diff_data_dir,"deseq_hypoxia_results_tximeta.tsv"),
@@ -289,19 +301,22 @@ write.table(res_Shrink_hypo_df_hgnc, file= file.path(diff_data_dir,"deseq_hypoxi
 
 #  Save to run GO and pathway analysis
 # up genes
-res_Shrink_hypo_df_hgnc |> filter(class == "gained") |> dplyr::select(gene_id) |> 
+res_Shrink_hypo_df_hgnc |> filter(class == "gained") |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id)) |>
+    dplyr::select(gene_id) |> 
     distinct() |> 
     write.table(file.path(diff_data_dir,"diff_hypoxia_upregulated_padj05log2fc1_genes.txt"),
     sep="\t",quote=F,col.names=FALSE, row.names = FALSE)
 
 # down genes
-res_Shrink_hypo_df_hgnc |> filter(class == "lost") |> dplyr::select(gene_id) |> 
+res_Shrink_hypo_df_hgnc |> filter(class == "lost") |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id)) |>
+    dplyr::select(gene_id) |> 
     distinct() |> 
     write.table(file.path(diff_data_dir,"diff_hypoxia_downregulated_padj05log2fc1_genes.txt"),
     sep="\t",quote=F,col.names=FALSE, row.names = FALSE)
 
 #background genes
-res_Shrink_hypo_df_hgnc  |> dplyr::select(gene_id) |> 
+res_Shrink_hypo_df_hgnc |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id)) |>
+    dplyr::select(gene_id) |>  
     distinct() |> 
     write.table(file.path(diff_data_dir,"diff_hypoxia_background_padj05log2fc1_genes.txt"),
     sep="\t",quote=F,col.names=FALSE, row.names = FALSE)
@@ -429,33 +444,40 @@ res_Shrink_inter_df$class <- "static"
 res_Shrink_inter_df$class[res_Shrink_inter_df$gene_id %in% up_inter$gene_id] <- "gained"
 res_Shrink_inter_df$class[res_Shrink_inter_df$gene_id %in% down_inter$gene_id] <- "lost"
 
+res_Shrink_inter_df_hgnc <- res_Shrink_inter_df |> add_symbol(gene_annot_clean)
+res_Shrink_inter_df_hgnc |> filter(grepl("ENSG", SYMBOL, ignore.case = TRUE)) |> dim() # 2866 of them couldn't find the HGNC
+
 # Adding the HGNC symbol
-ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-res_Shrink_inter_df_cleanVer <- res_Shrink_inter_df |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id))
-annots <- AnnotationDbi::select(org.Hs.eg.db, res_Shrink_inter_df_cleanVer$gene_id,
-                                columns=c("SYMBOL"), keytype="ENSEMBL")
-annots <- dplyr::rename(annots, gene_id = ENSEMBL)
-annots_unique <- annots %>% distinct(gene_id, .keep_all = TRUE)
-res_Shrink_inter_df_hgnc <- left_join(res_Shrink_inter_df_cleanVer, annots_unique, by = "gene_id") # 2816 of them couldn't find the HGNC
+# ensembl <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+# res_Shrink_inter_df_cleanVer <- res_Shrink_inter_df |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id))
+# annots <- AnnotationDbi::select(org.Hs.eg.db, res_Shrink_inter_df_cleanVer$gene_id,
+#                                 columns=c("SYMBOL"), keytype="ENSEMBL")
+# annots <- dplyr::rename(annots, gene_id = ENSEMBL)
+# annots_unique <- annots %>% distinct(gene_id, .keep_all = TRUE)
+# res_Shrink_inter_df_hgnc <- left_join(res_Shrink_inter_df_cleanVer, annots_unique, by = "gene_id") # 2816 of them couldn't find the HGNC
 
 save(res_Shrink_inter_df_hgnc, file= file.path(diff_data_dir,"shrink_interaction_hgnc_tximeta.Rdata"))
  write.table(res_Shrink_inter_df_hgnc, file= file.path(diff_data_dir,"deseq_interaction_results_tximeta.tsv"),
             sep="\t",quote=F,col.names=TRUE, row.names = FALSE)
+
 #  Save to run GO and pathway analysis
 # up genes
-res_Shrink_inter_df_hgnc |> filter(class == "gained") |> dplyr::select(gene_id) |> 
+res_Shrink_inter_df_hgnc |> filter(class == "gained") |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id)) |>
+    dplyr::select(gene_id) |> 
     distinct() |> 
     write.table(file.path(diff_data_dir,"diff_interaction_upregulated_padj05log2fc1_genes.txt"),
     sep="\t",quote=F,col.names=FALSE, row.names = FALSE)
 
 # down genes
-res_Shrink_inter_df_hgnc |> filter(class == "lost") |> dplyr::select(gene_id) |> 
+res_Shrink_inter_df_hgnc |> filter(class == "lost") |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id)) |>
+    dplyr::select(gene_id) |> 
     distinct() |> 
     write.table(file.path(diff_data_dir,"diff_interaction_downregulated_padj05log2fc1_genes.txt"),
     sep="\t",quote=F,col.names=FALSE, row.names = FALSE)
 
 #background genes
-res_Shrink_inter_df_hgnc  |> dplyr::select(gene_id) |> 
+res_Shrink_inter_df_hgnc  |> dplyr::mutate(gene_id = gsub("\\..*$", "", gene_id)) |>
+    dplyr::select(gene_id) |> 
     distinct() |> 
     write.table(file.path(diff_data_dir,"diff_interaction_background_padj05log2fc1_genes.txt"),
     sep="\t",quote=F,col.names=FALSE, row.names = FALSE)
@@ -912,6 +934,7 @@ lapply(names(deseq_files), function(name) {
     write.xlsx(df, file = file.path(table_dir, output_filename))
   }
 })
+
 # venndiagram
 
 library(eulerr)
